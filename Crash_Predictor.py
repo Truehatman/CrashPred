@@ -39,10 +39,34 @@ def aggiorna_moltiplicatori_da_sito(file_csv):
 
         df.to_csv(file_csv, index=False)
 
-        return ultimi_moltiplicatori
+        return df  # Ora restituiamo un DataFrame
     else:
         print(f"Errore nella richiesta al sito. Codice di stato: {response.status_code}")
+        return pd.DataFrame()  # Restituisci un DataFrame vuoto se c'è un errore
+
+# Funzione per leggere i moltiplicatori da un file CSV
+def leggi_moltiplicatori_da_csv(file_path):
+    if os.path.exists(file_path):
+        df = pd.read_csv(file_path)
+        return df['moltiplicatore'].tolist()
+    else:
         return []
+
+# Funzione per la previsione del prossimo moltiplicatore
+def previsione_prossimo_moltiplicatore(ultimi_moltiplicatori):
+    if len(ultimi_moltiplicatori) >= 2:
+        X = np.arange(1, len(ultimi_moltiplicatori) + 1).reshape(-1, 1)
+        y = np.array(ultimi_moltiplicatori).reshape(-1, 1)
+
+        model = LinearRegression()
+        model.fit(X, y)
+
+        prossimo_incremento = model.predict([[len(ultimi_moltiplicatori) + 1]])
+        prossimo_moltiplicatore = ultimi_moltiplicatori[-1] + prossimo_incremento[0][0]
+
+        return prossimo_moltiplicatore
+    else:
+        return None
 
 # /predict command
 @bot.message_handler(commands=['predict'])
@@ -56,19 +80,14 @@ def predict(message):
         # Prediction next multiplier
         prossimo_moltiplicatore = previsione_prossimo_moltiplicatore(ultimi_moltiplicatori)
 
-        # Send prediction to bot
-        bot.send_message(chat_id, f"Next multiplier will be {prossimo_moltiplicatore}")
+        if prossimo_moltiplicatore is not None:
+            # Send prediction to bot
+            bot.send_message(chat_id, f"Next multiplier will be {prossimo_moltiplicatore}")
+        else:
+            bot.send_message(chat_id, "Insufficient data for prediction. Need at least 2 multipliers in the CSV.")
 
     except Exception as e:
         bot.send_message(chat_id, "Error.")
-
-# Funzione per leggere i moltiplicatori da un file CSV
-def leggi_moltiplicatori_da_csv(file_path):
-    if os.path.exists(file_path):
-        df = pd.read_csv(file_path)
-        return df['moltiplicatore'].tolist()
-    else:
-        return []
 
 # Aggiungi la funzione per aggiornare gli ultimi moltiplicatori dal sito quando si avvia il bot
 file_csv = 'moltiplicatori.csv'
