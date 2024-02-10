@@ -4,34 +4,36 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 import numpy as np
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import telebot
 
 # Telegram bot token
 TOKEN = '6693574970:AAHPcGJQUWLZC0_2Oid9ve8ONDKnIzCxrSY'
 
-# Last 50 multiplier
+# Inizializza il bot
+bot = telebot.TeleBot(TOKEN)
+
+# Funzione per ottenere gli ultimi 50 moltiplicatori dal sito e aggiornare il file CSV
 def aggiorna_moltiplicatori_da_sito(file_csv):
     url = "https://roobet.party/crash"
     
-    # Http Request
+    # Effettua la richiesta HTTP al sito
     response = requests.get(url)
     
     if response.status_code == 200:
-        # analys of Html with beautifulsoup 
+        # Analizza l'HTML con BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Find multiplier
+        # Trova gli elementi contenenti i moltiplicatori
         moltiplicatori_elements = soup.find_all("div", class_="crash-history-item")
 
-        # Take last 50 
+        # Estrai gli ultimi 50 moltiplicatori
         ultimi_moltiplicatori = [float(elem.text) for elem in moltiplicatori_elements[:50]]
 
-        # Update or Create file CSV
+        # Aggiorna o crea il file CSV
         if os.path.exists(file_csv):
             df = pd.read_csv(file_csv)
             df = pd.concat([pd.DataFrame({'moltiplicatore': ultimi_moltiplicatori}), df], ignore_index=True)
-            df = df.drop_duplicates(subset=['moltiplicatore']).head(50) 
+            df = df.drop_duplicates(subset=['moltiplicatore']).head(50)  # Rimuovi duplicati e mantieni gli ultimi 50
         else:
             df = pd.DataFrame({'moltiplicatore': ultimi_moltiplicatori})
 
@@ -39,12 +41,13 @@ def aggiorna_moltiplicatori_da_sito(file_csv):
 
         return ultimi_moltiplicatori
     else:
-        print(f"Error on site request. Status code: {response.status_code}")
+        print(f"Errore nella richiesta al sito. Codice di stato: {response.status_code}")
         return []
 
 # /predict command
-def predict(update: Update, context: CallbackContext) -> None:
-    chat_id = update.message.chat_id
+@bot.message_handler(commands=['predict'])
+def predict(message):
+    chat_id = message.chat.id
     try:
         # Read multipliers from CSV
         file_csv = 'moltiplicatori.csv'
@@ -54,12 +57,12 @@ def predict(update: Update, context: CallbackContext) -> None:
         prossimo_moltiplicatore = previsione_prossimo_moltiplicatore(ultimi_moltiplicatori)
 
         # Send prediction to bot
-        context.bot.send_message(chat_id=chat_id, text=f"Next multiplier will be {prossimo_moltiplicatore}")
+        bot.send_message(chat_id, f"Next multiplier will be {prossimo_moltiplicatore}")
 
     except Exception as e:
-        context.bot.send_message(chat_id=chat_id, text="Error.")
+        bot.send_message(chat_id, "Error.")
 
-# Read csv file
+# Funzione per leggere i moltiplicatori da un file CSV
 def leggi_moltiplicatori_da_csv(file_path):
     if os.path.exists(file_path):
         df = pd.read_csv(file_path)
@@ -67,17 +70,9 @@ def leggi_moltiplicatori_da_csv(file_path):
     else:
         return []
 
-# Updater and Handler
-updater = Updater(token=TOKEN, use_context=True)
-dispatcher = updater.dispatcher
-
-# Add Handler for /predict
-dispatcher.add_handler(CommandHandler("predict", predict))
-
-# Auto update last multiplier
+# Aggiungi la funzione per aggiornare gli ultimi moltiplicatori dal sito quando si avvia il bot
 file_csv = 'moltiplicatori.csv'
 ultimi_moltiplicatori_da_sito = aggiorna_moltiplicatori_da_sito(file_csv)
 
 # Avvia il bot
-updater.start_polling()
-updater.idle()
+bot.polling()
